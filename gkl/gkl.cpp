@@ -3,7 +3,7 @@ GKL S4 & S6
 Credits:
 Rolf Simoes
 Eduardo Dias
-Based on lectures of Prof. J. Ricardo Mendonça (Programa em Modelagem de Sistemas Complexos/EACH/USP) and
+Based on lectures of Prof. J. Ricardo Mendonca (Programa em Modelagem de Sistemas Complexos/EACH/USP) and
   on paper Gach, Kurdyumov, Levin (1978).
 */
 
@@ -13,79 +13,47 @@ Based on lectures of Prof. J. Ricardo Mendonça (Programa em Modelagem de Sistema
 
 #define __GKL_MAX_STATES 6
 #define __GKL_MAX_LEN 5000
-#define __GKL_MAIN_STATES 2
-
-/* data type definitions */
-enum __GKL_CONVERGENCE {
-	__gkl_convergence_none = 0,
-	__gkl_convergence_right = 1,
-	__gkl_convergence_wrong = -1
-};
-
-enum __GKL_PRINT_DETAIL {
-	__gkl_print_detail_x0 = 1 << 1,
-	__gkl_print_detail_x1 = 1 << 2,
-	__gkl_print_detail_x2 = 1 << 3,
-	__gkl_print_detail_z0 = 1 << 4,
-	__gkl_print_detail_z1 = 1 << 5,
-	__gkl_print_detail_convergence = 1 << 6
-};
-
-#define __GKL_PAST_MEMORY 10
-int _past_rho[__GKL_PAST_MEMORY][__GKL_MAIN_STATES];
 
 /* begin global variables definitions */
-bool stop_on_convergence = false;
+int num_states = 4;
+int ca_len = 400;
+int simulations = 1;
+int num_steps = 4000;
+double noise = 0.0;
+
 bool x0_informed = false;
 bool x1_informed = false;
 bool x2_informed = false;
 bool z0_informed = false;
 bool z1_informed = false;
-bool seed_informed = false;
-bool max_steps_informed = false;
-bool print_out_rho = false;
-bool print_out_ca = false;
-bool print_out_stats = false;
-bool print_ca_mapped = true;
-int num_states = 4;
-int ca_len = 400;
-int max_steps = 4000;
-int simulations = 1;
-int stats_from = 0;
-int stop_noise_on_step = 0;
+bool transient_informed = false;
 double x0 = 0.0;
 double x1 = 0.0;
 double x2 = 0.0;
 double z0 = 0.0;
 double z1 = 0.0;
-double noise = 0.0;
+int transient = 0;
 
 int simulation = 0;
 int step = 0;
-double entropy_before_noise = 0.0;
-double entropy_after_noise = 0.0;
-__GKL_CONVERGENCE convergence = __gkl_convergence_none;
+
 int ca[2][__GKL_MAX_LEN + 2] = { 0 };
 int psi[__GKL_MAX_STATES][__GKL_MAX_STATES][__GKL_MAX_STATES] = { 0 };
 int rho[__GKL_MAX_STATES] = { 0 };
 int s_count[__GKL_MAX_STATES] = { 0 };
 int zeta[__GKL_MAX_STATES][__GKL_MAX_LEN + 1] = { 0 };
-double sum_rho[__GKL_MAX_STATES] = { 0 };
-double sum_rho_sqr[__GKL_MAX_STATES] = { 0 };
 /* end global variables definitions */
 
 using namespace std;
 
 /* begin defining random functions */
 random_device __rd;
-//mt19937 __gen(__rd());
-//uniform_real_distribution<> random(0, 1);
-//void __init_gen(){ ; }
 /* 
 Public domain code for JKISS RNG - The period of JKISS is aproximately 2**127 (MT's period is much larger: 2**19937-1) 
 but KISS is about 40% more fast than MT PRNG. (Source: http://www0.cs.ucl.ac.uk/staff/d.jones/GoodPracticeRNG.pdf) 
 */
 // KISS Seed variables;
+bool seed_informed = false;
 unsigned int __KISS_x = 123456789, __KISS_y = 987654321, __KISS_z = 43219876, __KISS_c = 6543217;
 // initialyzing KISS generator seed;
 void __init_rand_gen(){
@@ -223,9 +191,8 @@ void __handle_options(int argc, char *argv[]){
 		}
 		else if ((strcmp(argv[i], "-T") == 0) && (argc - 1 > i)){
 			cout << argv[i] << " " << argv[i + 1] << " ";
-			max_steps_informed = true;
-			max_steps = atol(argv[++i]);
-			if (max_steps < 0 || (print_out_stats && max_steps < stats_from)){
+			num_steps = atol(argv[++i]);
+			if (num_steps < 0){
 				__usage(argv[0]);
 				exit(1);
 			}
@@ -248,11 +215,11 @@ void __handle_options(int argc, char *argv[]){
 			print_ca_mapped = false;
 		}
 		*/
-		else if ((strcmp(argv[i], "-stats") == 0) && (argc - 1 > i)){
+		else if ((strcmp(argv[i], "-transient") == 0) && (argc - 1 > i)){
 			cout << argv[i] << " " << argv[i + 1] << " ";
-			print_out_stats = true;
-			stats_from = atol(argv[++i]);
-			if ((max_steps < stats_from) && max_steps_informed){
+			transient_informed = true;
+			transient = atol(argv[++i]);
+			if (transient < 0){
 				__usage(argv[0]);
 				exit(1);
 			}
@@ -378,14 +345,6 @@ void __init_simulation_parameters(){
 	if (!z0_informed) { z0 = random(__gen); }
 	if (!z1_informed) { z1 = random(__gen); }
 	/* begin reseting rho & rho stats */
-	// used to calc rho stats if -stats option is informed;
-	if (print_out_stats){
-		for (int state = 0; state < __GKL_MAIN_STATES; ++state){
-			sum_rho[state] = 0.0;
-			sum_rho_sqr[state] = 0.0;
-		}
-	}
-	/* end reseting rho & rho stats */
 	/* begin generating initial ca configuration */
 	if (num_states == 4){
 		// calculating cumulated states' quantity for gkl s4 based on simulation parameters;
@@ -405,149 +364,6 @@ void __init_simulation_parameters(){
 	}
 }
 
-void __print_out_header_total(){
-	if (!print_out_stats){
-		if (!print_out_ca){
-			cout << "# GKL initial configuration and final convergence:" << endl;
-			// printing for gkl s4;
-			if (num_states == 4){
-				cout << "x0:      \tx1:      \tz:      \tconv.:\tsteps:" << endl;
-			}
-			// printing for gkl s6;
-			else if (num_states == 6){
-				cout << "x0:      \tx1:      \tx2:     \tz:      \tconv.:\tsteps:" << endl;
-			}
-		}
-	}
-	else {
-		// printing rho stats header;
-		cout << "# GKL Rho statistics:" << endl;
-		cout << "s0 average:\ts0 std.dev.:\ts1 average:\ts1 std.dev.:\tconv.:";
-		cout << endl;
-	}
-}
-void __print_out_data_total(){
-	if (!print_out_stats){
-		if (print_out_ca){
-			cout << endl;
-			// printing for -ca option in gkl s4;
-			if (num_states == 4){
-				cout << "x0=" << x0 << "\tx1=" << x1 << "\tz=" << z0 << "\tconv.=" << convergence << endl;
-			}
-			// printing for -ca option in gkl s6;
-			else if (num_states == 6){
-				cout << "x0=" << x0 << "\tx1=" << x1 << "\tx2=" << x2 << "\tz=" << z0 << "\tconv.=" << convergence << endl;
-			}
-		}
-		else {
-			// printing for gkl s4;
-			if (num_states == 4){
-				cout << x0 << "\t" << x1 << "\t" << z0 << "\t" << convergence << "\t" << step << endl;
-			}
-			// printing for gkl s6;
-			else if (num_states == 6){
-				cout << x0 << "\t" << x1 << "\t" << x2 << "\t" << z0 << "\t" << convergence << "\t" << step << endl;
-			}
-		}
-	}
-	else {
-		// printing rho stats;
-		for (int state = 0; state < __GKL_MAIN_STATES; ++state){
-			cout << sum_rho[state] / (step - stats_from + 1) / ca_len << "\t" << sqrt(sum_rho_sqr[state] / (step - stats_from + 1) - pow(sum_rho[state] / (step - stats_from + 1), 2)) / ca_len << "\t";
-		}
-		cout << convergence << "\t" << endl;
-	}
-}
-void __print_out_header_step(){
-	if (!print_out_stats){
-		if (print_out_ca && print_out_rho){
-			cout << endl;
-			cout << "# GKL CA configuration dynamics with densities:" << endl;
-			cout << "step:\tconfiguration (states' densities & convergence):" << endl;
-		}
-		else if (print_out_ca){
-			cout << endl;
-			cout << "# GKL CA configuration dynamics:" << endl;
-			cout << "step:\tconfiguration (convergence):" << endl;
-		}
-		else if (print_out_rho){
-			cout << endl;
-			cout << "# GKL Rho (states' densities) dynamics:" << endl;
-			if (num_states == 4) {
-				cout << "step:\ts0:   \ts1:   \ts2:   \ts3:   \tconv.:" << endl;
-			}
-			else if (num_states == 6) {
-				cout << "step:\ts0:   \ts1:   \ts2:   \ts3:   \ts4:   \ts5:   \tconv.:" << endl;
-			}
-		}
-	}
-}
-void __print_out_data_step(){
-	unsigned char __KISS_charmap[__GKL_MAX_STATES];
-	if (print_ca_mapped){
-		if (num_states == 4) {
-			__KISS_charmap[0] = 0xb0;
-			__KISS_charmap[1] = 0xdb;
-			__KISS_charmap[2] = 0xb1;
-			__KISS_charmap[3] = 0xb2;
-		}
-		else if (num_states == 6){
-			__KISS_charmap[0] = 0xb0;
-			__KISS_charmap[1] = 0xdb;
-			__KISS_charmap[2] = 0xb1;
-			__KISS_charmap[3] = 0xb2;
-			__KISS_charmap[4] = 0x00;
-			__KISS_charmap[5] = 0xFE;
-		}
-	}
-	else {
-		if (num_states == 4) {
-			__KISS_charmap[0] = 'r';
-			__KISS_charmap[1] = 'l';
-			__KISS_charmap[2] = 'u';
-			__KISS_charmap[3] = 'd';
-		}
-		else if (num_states == 6){
-			__KISS_charmap[0] = '0';
-			__KISS_charmap[1] = '1';
-			__KISS_charmap[2] = '2';
-			__KISS_charmap[3] = '3';
-			__KISS_charmap[4] = '4';
-			__KISS_charmap[5] = '5';
-		}
-	}
-	if (!print_out_stats){
-		if (print_out_ca && print_out_rho){
-			// printing ca;
-			cout << step << "\t";
-			for (int cell = 1; cell < ca_len + 1; ++cell){ cout << __KISS_charmap[ca[step % 2][cell]]; }
-			// printing rho;
-			for (int state = 0; state < num_states; ++state){ cout << " " << __KISS_charmap[state] << "=" << rho[state] << ";"; }
-			// printing convergence;
-			cout << "\t" << convergence;
-			cout << endl;
-		}
-		else if (print_out_ca){
-			// printing ca;
-			cout << step << "\t";
-			for (int cell = 1; cell < ca_len + 1; ++cell){ cout << __KISS_charmap[ca[step % 2][cell]]; }
-			// printing convergence;
-			cout << "\t" << convergence;
-			cout << endl;
-		}
-		else if (print_out_rho){
-			// printing rho;
-			cout << step;
-			for (int state = 0; state < num_states; ++state){ cout << "\t" << rho[state]; }
-			// printing convergence;
-			cout << "\t" << convergence;
-			cout << "\t" << entropy_before_noise;
-			cout << "\t" << entropy_after_noise;
-			cout << endl;
-		}
-	}
-}
-
 void __prt_simulation_header(){
 	cout << "zeta_index";
 	for (int state = 0; state < num_states; ++state){
@@ -559,7 +375,7 @@ void __prt_simulation_footer(){
 	for (int zeta_index = 0; zeta_index <= ca_len; ++zeta_index){
 		cout << static_cast<double>(zeta_index) / ca_len;
 		for (int state = 0; state < num_states; ++state){
-			cout << '\t' << static_cast<double>(zeta[state][zeta_index]) / simulations / max_steps;
+			cout << '\t' << static_cast<double>(zeta[state][zeta_index]) / simulations;
 		}
 		cout << endl;
 	}
@@ -576,36 +392,6 @@ void __prt_detail(){
 /* end auxiliary functions */
 
 /* begin gkl functions dynamics */
-__GKL_CONVERGENCE verify_convergence(){
-	double _tolerance = pow(noise, 2.0 / 3.0) * ca_len;
-	if (__GKL_MAIN_STATES == 2){
-		if ((rho[0] <= _tolerance && rho[1] >= ca_len - _tolerance) || (rho[1] <= _tolerance && rho[0] >= ca_len - _tolerance)) {
-			if (((s_count[0] > s_count[1] - s_count[0]) && (rho[0] > rho[1])) || 
-				((s_count[0] < s_count[1] - s_count[0]) && (rho[0] < rho[1]))){
-				return __gkl_convergence_right;
-			}
-			else { return __gkl_convergence_wrong; }
-		}
-		else { return __gkl_convergence_none; }
-	}
-}
-double __calc_entropy(){
-	double entropy = 0.0;
-	for (int state = 0; state < num_states; ++state){
-		if (rho[state] > 0){
-			entropy += (static_cast<double>(rho[state]) / ca_len) * log2(static_cast<double>(rho[state]) / ca_len) / log2(num_states);
-		}
-	}
-	return -1.0 * entropy;
-}
-void calc_stats(){
-	if (step >= stats_from){
-		for (int state = 0; state < num_states; ++state){
-			sum_rho[state] += rho[state];
-			sum_rho_sqr[state] += pow(rho[state], 2);
-		}
-	}
-}
 void generate_new_ca(){
 	step = 0;
 	// reseting rho;
@@ -613,7 +399,7 @@ void generate_new_ca(){
 	// generating linear array with states' quantity;
 	for (int cell = 1; cell < ca_len + 1; ++cell){
 		for (int state = 0; state < num_states; ++state){
-			if (cell <= s_count[state]){ ca[step][cell] = state; ++rho[state];break; }
+			if (cell <= s_count[state]){ ca[step][cell] = state; ++rho[state]; break; }
 		}
 	}
 	for (int state = 0; state < num_states; ++state){ ++zeta[state][rho[state]]; }
@@ -624,14 +410,10 @@ void generate_new_ca(){
 		ca[step][cell] = ca[step][_swap_i];
 		ca[step][_swap_i] = cell_value;
 	}
-	//entropy_before_noise = __calc_entropy();
-	//entropy_after_noise = __calc_entropy();
 	// periodic border condition;
 	ca[step % 2][0] = ca[step % 2][ca_len];  ca[step % 2][ca_len + 1] = ca[step % 2][1];
 	// printing detail;
 	__prt_detail();
-	// defining first convergence;
-	convergence = __gkl_convergence_none;
 }
 /* end gkl functions dynamics */
 /*
@@ -667,7 +449,7 @@ int main(int argc, char *argv[]){
 		//printing step header;
 		__prt_steps_header();
 		/* begin iterating steps */
-		for (step = 1; step < max_steps; ++step){
+		for (step = 1; step < num_steps + transient; ++step){
 			// reseting rho;
 			for (int state = 0; state < num_states; ++state){ rho[state] = 0; }
 			/* begin applying psi */
@@ -676,35 +458,24 @@ int main(int argc, char *argv[]){
 				++rho[ca[step % 2][cell]];
 			}
 			/* end applying psi */
-			//entropy_before_noise = __calc_entropy();
 			/* begin applying noise error */
-			if (!stop_noise_on_step || (stop_noise_on_step && (step < stop_noise_on_step))){
-				for (int cell = 1; cell < ca_len + 1; ++cell){
-					if (noise && (random(__gen) < noise)){
-						--rho[ca[step % 2][cell]];
-						ca[step % 2][cell] = static_cast<int>(random(__gen) * num_states);
-						++rho[ca[step % 2][cell]];
-					}
+			for (int cell = 1; cell < ca_len + 1; ++cell){
+				if (noise && (random(__gen) < noise)){
+					--rho[ca[step % 2][cell]];
+					ca[step % 2][cell] = static_cast<int>(random(__gen) * num_states);
+					++rho[ca[step % 2][cell]];
 				}
 			}
-			for (int state = 0; state < num_states; ++state){ ++zeta[state][rho[state]]; }
+			if (step > transient) { for (int state = 0; state < num_states; ++state){ ++zeta[state][rho[state]]; } }
 			/* end applying noise error */
-			//entropy_after_noise = __calc_entropy();
 			// periodic border condition;
 			ca[step % 2][0] = ca[step % 2][ca_len];  ca[step % 2][ca_len + 1] = ca[step % 2][1];
-			// verifying convergence;
-			//convergence = verify_convergence();
 			// printing detail;
 			__prt_detail();
-			// stop if ca converged if -c option informed
-			if ((convergence != __gkl_convergence_none) && stop_on_convergence){ break; }
 		}
 		/* end iterating steps */
 		// printing step footer;
 		__prt_steps_footer();
-		//// printing final results;
-		//if (simulation == 0){ __print_out_header_total(); }
-		//__print_out_data_total();
 	}
 	__prt_simulation_footer();
 	/* end iterating simulations */
