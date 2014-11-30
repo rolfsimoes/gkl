@@ -110,6 +110,10 @@ void __usage(char *program_name){
 	cout << endl;
 }
 void __handle_options(int argc, char *argv[]){
+	if (argc <= 1) {
+		__usage(argv[0]);
+		exit(1);
+	}
 	cout << "#Command: " << argv[0] << " " << argv[1] << " ";
 	// obligatory paramters;
 	if ((strcmp(argv[1], "s4") == 0) || (strcmp(argv[1], "S4") == 0)){ num_states = 4; }
