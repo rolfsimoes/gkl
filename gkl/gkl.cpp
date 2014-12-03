@@ -14,12 +14,19 @@ Based on lectures of Prof. J. Ricardo Mendonca (Programa em Modelagem de Sistema
 #define __GKL_MAX_STATES 6
 #define __GKL_MAX_LEN 5000
 
+enum __GKL_REPORT_OPTION
+{
+	__gkl_report_zeta = 0,
+	__gkl_report_psi_count = 1
+};
+
 /* begin global variables definitions */
 int num_states = 4;
 int ca_len = 400;
 int simulations = 1;
 int num_steps = 4000;
 double noise = 0.0;
+__GKL_REPORT_OPTION report = __gkl_report_zeta;
 
 bool x0_informed = false;
 bool x1_informed = false;
@@ -39,6 +46,7 @@ int step = 0;
 
 int ca[2][__GKL_MAX_LEN + 2] = { 0 };
 int psi[__GKL_MAX_STATES][__GKL_MAX_STATES][__GKL_MAX_STATES] = { 0 };
+int psi_count[__GKL_MAX_STATES][__GKL_MAX_STATES][__GKL_MAX_STATES] = { 0 };
 int rho[__GKL_MAX_STATES] = { 0 };
 int s_count[__GKL_MAX_STATES] = { 0 };
 int zeta[__GKL_MAX_STATES][__GKL_MAX_LEN + 1] = { 0 };
@@ -83,38 +91,39 @@ double random(unsigned int (*x)(void)){
 
 /* begin auxiliary functions */
 void __usage(char *program_name){
-	cout << "Usage: " << program_name << " <gkl_type> [-L <int>][-n <float>][-runs <int>]" << endl;
-	cout << "  [-T <int>][-c][-rho][-ca][-nomap][-stats <int>][-seed <int>]" << endl;
-	cout << "  [-x0 <float>][-x1 <float>][-x2 <float>][-z <float>]" << endl;
-	cout << endl;
-	cout << "<gkl_type>:    Type of GKL. Choose one of (S4, S6). Default S4." << endl;
-	cout << "-L <int>:      CA size up to " << __GKL_MAX_LEN << ". Default 400;" << endl;
-	cout << "-n <float>:    PCA noise level between 0.0 and 1.0. Default 0.0;" << endl;
-	cout << "-rep <int>:    Repeat simulation. Default 1;" << endl;
-	cout << "-T <int>:      Max CA steps. Default 4000;" << endl;
-	cout << "-c:            Stop on convergence is reached;" << endl;
-	cout << "-rho:          Prints rho (state densities) aint steps;" << endl;
-	cout << "-ca:           Prints CA configuration over steps;" << endl;
-	cout << "-nomap:        Prints CA configuration with states' numbers;" << endl;
-	cout << "-stats <int>:  Supress -c, -rho and -ca options and prints out rho stats;" << endl;
-	cout << "               You must inform -T greater than <int> to get stats;" << endl;
-	cout << "For GKL S4:" << endl;
-	cout << "  -x0 <float>: Initial s0/s1 proportion between 0.0 and 1.0. Default random;" << endl;
-	cout << "  -x1 <float>: Initial s2/s3 proportion between 0.0 and 1.0. Default random;" << endl;
-	cout << "  -z <float>:  Initial x0/x1 proportion between 0.0 and 1.0. Default random;" << endl;
-	cout << "For GKL S6:" << endl;
-	cout << "  -x0 <float>: Initial s0/s1 proportion between 0.0 and 1.0. Default random;" << endl;
-	cout << "  -x1 <float>: Initial s2/s3 proportion between 0.0 and 1.0. Default random;" << endl;
-	cout << "  -x2 <float>: Initial s4/s5 proportion between 0.0 and 1.0. Default random;" << endl;
-	cout << "  -z <float>:  Initial x0/(x1 + x2) proportion between 0.0 and 1.0. Default random." << endl;
-	cout << endl;
+	cerr << "Usage: " << program_name << " <gkl_type> [-L <int>] [-n <float>] [-R <int>]\n";
+	cerr << "  [-T <int>] [-seed <int> <int> <int> <int>] [-transient <int>]\n";
+	cerr << "  [-report <options>] [-x0 <float>] [-x1 <float>]\n";
+	cerr << "  [-x2 <float>] [-z0 <float>] [-z1 <float>]\n\n";
+	cerr << "Description:\n";
+	cerr << "  <gkl_type>:    Type of GKL. Choose one of (S4, S6). Default S4.\n";
+	cerr << "  -L <int>:      CA size up to " << __GKL_MAX_LEN << ". Default 400;\n";
+	cerr << "  -n <float>:    PCA noise level between 0.0 and 1.0. Default 0.0;\n";
+	cerr << "  -R <int>:		Repeat simulation. Default 1;\n";
+	cerr << "  -T <int>:      Max CA steps. Default 4000;\n";
+	cerr << "  -seed <int> <int> <int> <int>:\n";
+	cerr << "               Seed used to generate random numbers;\n";
+	cerr << "  -transient <int>:\n";
+	cerr << "               Transient used to begin counting;\n";
+	cerr << "  -report <zeta|psi_count>:\n";
+	cerr << "               Reports a given predefined report structure. Default 'zeta';\n";
+	cerr << "  For GKL S4:\n";
+	cerr << "  -x0 <float>: Initial s0/s1 proportion between 0 and 1. Default random;\n";
+	cerr << "  -x1 <float>: Initial s2/s3 proportion between 0 and 1. Default random;\n";
+	cerr << "  -z0 <float>: Initial x0/x1 proportion between 0 and 1. Default random;\n";
+	cerr << "  For GKL S6:\n";
+	cerr << "  -x0 <float>: Initial s0/s1 proportion between 0 and 1. Default random;\n";
+	cerr << "  -x1 <float>: Initial s2/s3 proportion between 0 and 1. Default random;\n";
+	cerr << "  -x2 <float>: Initial s4/s5 proportion between 0 and 1. Default random;\n";
+	cerr << "  -z0 <float>: Initial x0/(x1+x2) proportion between 0 and 1. Default random.\n";
+	cerr << "  -z1 <float>: Initial x1/x2 proportion between 0 and 1. Default random.\n";
+	cerr << endl;
 }
 void __handle_options(int argc, char *argv[]){
 	if (argc <= 1) {
 		__usage(argv[0]);
 		exit(1);
 	}
-	cout << "#Command: " << argv[0] << " " << argv[1] << " ";
 	// obligatory paramters;
 	if ((strcmp(argv[1], "s4") == 0) || (strcmp(argv[1], "S4") == 0)){ num_states = 4; }
 	else if ((strcmp(argv[1], "s6") == 0) || (strcmp(argv[1], "S6") == 0)){ num_states = 6; }
@@ -125,68 +134,20 @@ void __handle_options(int argc, char *argv[]){
 	// optional parameters;
 	for (int i = 2; i < argc; ++i){ 
 		if ((strcmp(argv[i], "-L") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
 			ca_len = atol(argv[++i]);
 			if (ca_len > __GKL_MAX_LEN){
 				__usage(argv[0]);
 				exit(1);
 			}
 		} 
-		else if ((strcmp(argv[i], "-x0") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
-			x0 = atof(argv[++i]);
-			x0_informed = true;
-			if (x0 < 0 || x0 > 1){ 
-				__usage(argv[0]);
-				exit(1);
-			}
-		}
-		else if ((strcmp(argv[i], "-x1") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
-			x1 = atof(argv[++i]);
-			x1_informed = true;
-			if (x1 < 0 || x1 > 1){
-				__usage(argv[0]);
-				exit(1);
-			}
-		}
-		else if ((strcmp(argv[i], "-x2") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
-			x2 = atof(argv[++i]);
-			x2_informed = true;
-			if (x2 < 0 || x2 > 1){
-				__usage(argv[0]);
-				exit(1);
-			}
-		}
-		else if ((strcmp(argv[i], "-z0") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
-			z0 = atof(argv[++i]);
-			z0_informed = true;
-			if (z0 < 0 || z0 > 1){
-				__usage(argv[0]);
-				exit(1);
-			}
-		}
-		else if ((strcmp(argv[i], "-z1") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
-			z1 = atof(argv[++i]);
-			z1_informed = true;
-			if (z1 < 0 || z1 > 1){
-				__usage(argv[0]);
-				exit(1);
-			}
-		}
 		else if ((strcmp(argv[i], "-n") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
 			noise = atof(argv[++i]);
 			if (noise < 0 || noise > 1){ 
 				__usage(argv[0]);
 				exit(1);
 			}
 		}
-		else if ((strcmp(argv[i], "-rep") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
+		else if ((strcmp(argv[i], "-R") == 0) && (argc - 1 > i)){
 			simulations = atol(argv[++i]);
 			if (simulations < 1){
 				__usage(argv[0]);
@@ -194,42 +155,13 @@ void __handle_options(int argc, char *argv[]){
 			}
 		}
 		else if ((strcmp(argv[i], "-T") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
 			num_steps = atol(argv[++i]);
 			if (num_steps < 0){
 				__usage(argv[0]);
 				exit(1);
 			}
 		}
-		/*
-		else if (strcmp(argv[i], "-c") == 0){
-			cout << argv[i] << " ";
-			stop_on_convergence = true;
-		}
-		else if (strcmp(argv[i], "-rho") == 0){
-			cout << argv[i] << " ";
-			print_out_rho = true;
-		}
-		else if (strcmp(argv[i], "-ca") == 0){
-			cout << argv[i] << " ";
-			print_out_ca = true;
-		}
-		else if (strcmp(argv[i], "-nomap") == 0){
-			cout << argv[i] << " ";
-			print_ca_mapped = false;
-		}
-		*/
-		else if ((strcmp(argv[i], "-transient") == 0) && (argc - 1 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " ";
-			transient_informed = true;
-			transient = atol(argv[++i]);
-			if (transient < 0){
-				__usage(argv[0]);
-				exit(1);
-			}
-		}
 		else if ((strcmp(argv[i], "-seed") == 0) && (argc - 4 > i)){
-			cout << argv[i] << " " << argv[i + 1] << " " << argv[i + 2] << " " << argv[i + 3] << " " << argv[i + 4] << " ";
 			seed_informed = true;
 			__KISS_x = atol(argv[++i]);
 			__KISS_y = atol(argv[++i]);
@@ -240,8 +172,66 @@ void __handle_options(int argc, char *argv[]){
 				exit(1);
 			}
 		}
+		else if ((strcmp(argv[i], "-transient") == 0) && (argc - 1 > i)){
+			transient_informed = true;
+			transient = atol(argv[++i]);
+			if (transient < 0){
+				__usage(argv[0]);
+				exit(1);
+			}
+		}
+		else if ((strcmp(argv[i], "-report") == 0) && (argc - 1 > i)){
+			if (strcmp(argv[i + 1], "zeta") == 0){
+				report = __gkl_report_zeta; ++i;
+			}
+			else if (strcmp(argv[i + 1], "psi_count") == 0){
+				report = __gkl_report_psi_count; ++i;
+			} else {
+				__usage(argv[0]);
+				exit(1);
+			}
+		}
+		else if ((strcmp(argv[i], "-x0") == 0) && (argc - 1 > i)){
+			x0 = atof(argv[++i]);
+			x0_informed = true;
+			if (x0 < 0 || x0 > 1){
+				__usage(argv[0]);
+				exit(1);
+			}
+		}
+		else if ((strcmp(argv[i], "-x1") == 0) && (argc - 1 > i)){
+			x1 = atof(argv[++i]);
+			x1_informed = true;
+			if (x1 < 0 || x1 > 1){
+				__usage(argv[0]);
+				exit(1);
+			}
+		}
+		else if ((strcmp(argv[i], "-x2") == 0) && (argc - 1 > i)){
+			x2 = atof(argv[++i]);
+			x2_informed = true;
+			if (x2 < 0 || x2 > 1){
+				__usage(argv[0]);
+				exit(1);
+			}
+		}
+		else if ((strcmp(argv[i], "-z0") == 0) && (argc - 1 > i)){
+			z0 = atof(argv[++i]);
+			z0_informed = true;
+			if (z0 < 0 || z0 > 1){
+				__usage(argv[0]);
+				exit(1);
+			}
+		}
+		else if ((strcmp(argv[i], "-z1") == 0) && (argc - 1 > i)){
+			z1 = atof(argv[++i]);
+			z1_informed = true;
+			if (z1 < 0 || z1 > 1){
+				__usage(argv[0]);
+				exit(1);
+			}
+		}
 		else if (strcmp(argv[i], "-h") == 0){
-			cout << argv[i] << " ";
 			__usage(argv[0]);
 			exit(0);
 		}
@@ -249,6 +239,11 @@ void __handle_options(int argc, char *argv[]){
 			__usage(argv[0]);
 			exit(1);
 		}
+	}
+	cout << "#GKL_report_version: 2\n";
+	cout << "#Command_line: ";
+	for (int i = 0; i < argc; ++i){
+		cout << argv[i] << " ";
 	}
 	cout << endl;
 }
@@ -369,26 +364,53 @@ void __init_simulation_parameters(){
 }
 
 void __prt_simulation_header(){
-	cout << "zeta_index";
-	for (int state = 0; state < num_states; ++state){
-		cout << '\t' << "s" << state;
-	}
-	cout << endl;
-}
-void __prt_simulation_footer(){
-	for (int zeta_index = 0; zeta_index <= ca_len; ++zeta_index){
-		cout << static_cast<double>(zeta_index) / ca_len;
+	if (report == __gkl_report_zeta){
+		cout << "#Report: zeta\n";
+		cout << "#s_count";
 		for (int state = 0; state < num_states; ++state){
-			cout << '\t' << static_cast<double>(zeta[state][zeta_index]) / simulations;
+			cout << '\t' << "s" << state;
 		}
 		cout << endl;
+	}
+	else if (report == __gkl_report_psi_count){
+		cout << "#Report: psi_count\n";
+		cout << "#simulation";
+		for (int i = 0; i < num_states; ++i){
+			for (int j = 0; j < num_states; ++j){
+				for (int k = 0; k < num_states; ++k){
+					cout << "\t[" << i << " " << j << " " << k << "]";
+				}
+			}
+		}
+		cout << endl;
+	}
+}
+void __prt_simulation_footer(){
+	if (report == __gkl_report_zeta){
+		for (int zeta_index = 0; zeta_index <= ca_len; ++zeta_index){
+			cout << zeta_index;
+			for (int state = 0; state < num_states; ++state){
+				cout << '\t' << static_cast<double>(zeta[state][zeta_index]) / num_steps / simulations;
+			}
+			cout << endl;
+		}
 	}
 }
 void __prt_steps_header(){
 
 }
 void __prt_steps_footer(){
-
+	if (report == __gkl_report_psi_count){
+		cout << simulation;
+		for (int i = 0; i < num_states; ++i){
+			for (int j = 0; j < num_states; ++j){
+				for (int k = 0; k < num_states; ++k){
+					cout << "\t" << static_cast<double>(psi_count[i][j][k]) / ca_len / num_steps;
+				}
+			}
+		}
+		cout << endl;
+	}
 }
 void __prt_detail(){
 
@@ -400,6 +422,14 @@ void generate_new_ca(){
 	step = 0;
 	// reseting rho;
 	for (int state = 0; state < num_states; ++state){ rho[state] = 0; }
+	// reseting psi_count;
+	for (int i = 0; i < num_states; ++i){
+		for (int j = 0; j < num_states; ++j){
+			for (int k = 0; k < num_states; ++k){
+				psi_count[i][j][k] = 0;
+			}
+		}
+	}
 	// generating linear array with states' quantity;
 	for (int cell = 1; cell < ca_len + 1; ++cell){
 		for (int state = 0; state < num_states; ++state){
@@ -420,24 +450,6 @@ void generate_new_ca(){
 	__prt_detail();
 }
 /* end gkl functions dynamics */
-/*
-int rho_stats_count = 0;
-int rho_stats_sum[__GKL_MAX_STATES] = { 0 };
-int rho_stats_sum2[__GKL_MAX_STATES] = { 0 };
-void calc_rho_stats(){
-	for (int state = 0; state < num_states; ++state){
-		rho_stats_sum[state] += rho[state];
-		rho_stats_sum2[state] += pow(rho[state], 2);
-		++rho_stats_count;
-	}
-}
-
-void print_rho_stats(char separator = '\t', char end = '\n'){
-	for (int state = 0; state < num_states; ++state){
-		cout << sum_rho[state] / rho_stats_count / ca_len << separator << sqrt(rho_stats_sum2[state] / rho_stats_count - pow(rho_stats_sum[state] / rho_stats_count, 2)) / ca_len << (state + 1 == num_states ? end : separator);
-	}
-}
-*/
 
 // program entry point;
 int main(int argc, char *argv[]){
@@ -463,14 +475,19 @@ int main(int argc, char *argv[]){
 			}
 			/* end applying psi */
 			/* begin applying noise error */
-			for (int cell = 1; cell < ca_len + 1; ++cell){
-				if (noise && (random(__gen) < noise)){
+			if (noise && (random(__gen) < noise)){
+				for (int cell = 1; cell < ca_len + 1; ++cell){
 					--rho[ca[step % 2][cell]];
 					ca[step % 2][cell] = static_cast<int>(random(__gen) * num_states);
 					++rho[ca[step % 2][cell]];
 				}
 			}
-			if (step > transient) { for (int state = 0; state < num_states; ++state){ ++zeta[state][rho[state]]; } }
+			if (step > transient) { 
+				for (int state = 0; state < num_states; ++state){ ++zeta[state][rho[state]]; } 
+				for (int cell = 1; cell < ca_len + 1; ++cell){ 
+					++psi_count[ca[(step + 1) % 2][cell - 1]][ca[(step + 1) % 2][cell]][ca[(step + 1) % 2][cell + 1]];
+				}
+			}
 			/* end applying noise error */
 			// periodic border condition;
 			ca[step % 2][0] = ca[step % 2][ca_len];  ca[step % 2][ca_len + 1] = ca[step % 2][1];
