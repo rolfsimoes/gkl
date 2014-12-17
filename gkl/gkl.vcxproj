@@ -81,6 +81,20 @@
   <ItemGroup>
     <ClCompile Include="gkl.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="gkl_experiments_psi_count.py">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="gkl_experiments_zeta.py">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="gkl_files_psi_count.py">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="gkl_files_zeta.py">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

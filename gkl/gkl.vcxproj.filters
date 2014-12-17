@@ -19,4 +19,10 @@
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="gkl_experiments_psi_count.py" />
+    <None Include="gkl_experiments_zeta.py" />
+    <None Include="gkl_files_psi_count.py" />
+    <None Include="gkl_files_zeta.py" />
+  </ItemGroup>
 </Project>
