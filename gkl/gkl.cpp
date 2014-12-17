@@ -13,11 +13,13 @@ Based on lectures of Prof. J. Ricardo Mendonca (Programa em Modelagem de Sistema
 
 #define __GKL_MAX_STATES 6
 #define __GKL_MAX_LEN 5000
+#define __GKL_MAX_STEPS 100000
 
 enum __GKL_REPORT_OPTION
 {
 	__gkl_report_zeta = 0,
-	__gkl_report_psi_count = 1
+	__gkl_report_psi_count = 1,
+	__gkl_report_rho_steps = 2
 };
 
 /* begin global variables definitions */
@@ -50,12 +52,14 @@ int psi_count[__GKL_MAX_STATES][__GKL_MAX_STATES][__GKL_MAX_STATES] = { 0 };
 int rho[__GKL_MAX_STATES] = { 0 };
 int s_count[__GKL_MAX_STATES] = { 0 };
 int zeta[__GKL_MAX_STATES][__GKL_MAX_LEN + 1] = { 0 };
+int rho_steps[__GKL_MAX_STATES][__GKL_MAX_STEPS] = { 0 };
 /* end global variables definitions */
 
 using namespace std;
 
 /* begin defining random functions */
 random_device __rd;
+
 /* 
 Public domain code for JKISS RNG - The period of JKISS is aproximately 2**127 (MT's period is much larger: 2**19937-1) 
 but KISS is about 40% more fast than MT PRNG. (Source: http://www0.cs.ucl.ac.uk/staff/d.jones/GoodPracticeRNG.pdf) 
@@ -105,7 +109,7 @@ void __usage(char *program_name){
 	cerr << "               Seed used to generate random numbers;\n";
 	cerr << "  -transient <int>:\n";
 	cerr << "               Transient used to begin counting;\n";
-	cerr << "  -report <zeta|psi_count>:\n";
+	cerr << "  -report <zeta|psi_count|rho_steps>:\n";
 	cerr << "               Reports a given predefined report structure. Default 'zeta';\n";
 	cerr << "  For GKL S4:\n";
 	cerr << "  -x0 <float>: Initial s0/s1 proportion between 0 and 1. Default random;\n";
@@ -186,7 +190,11 @@ void __handle_options(int argc, char *argv[]){
 			}
 			else if (strcmp(argv[i + 1], "psi_count") == 0){
 				report = __gkl_report_psi_count; ++i;
-			} else {
+			}
+			else if (strcmp(argv[i + 1], "rho_steps") == 0){
+				report = __gkl_report_rho_steps; ++i;
+			}
+			else {
 				__usage(argv[0]);
 				exit(1);
 			}
@@ -343,7 +351,6 @@ void __init_simulation_parameters(){
 	if (!x2_informed) { x2 = random(__gen); }
 	if (!z0_informed) { z0 = random(__gen); }
 	if (!z1_informed) { z1 = random(__gen); }
-	/* begin reseting rho & rho stats */
 	/* begin generating initial ca configuration */
 	if (num_states == 4){
 		// calculating cumulated states' quantity for gkl s4 based on simulation parameters;
@@ -384,6 +391,14 @@ void __prt_simulation_header(){
 		}
 		cout << endl;
 	}
+	else if (report == __gkl_report_rho_steps){
+		cout << "#Report: rho_steps\n";
+		cout << "#step";
+		for (int state = 0; state < num_states; ++state){
+			cout << "\trho_s" << state;
+		}
+		cout << endl;
+	}
 }
 void __prt_simulation_footer(){
 	if (report == __gkl_report_zeta){
@@ -391,6 +406,15 @@ void __prt_simulation_footer(){
 			cout << zeta_index;
 			for (int state = 0; state < num_states; ++state){
 				cout << '\t' << static_cast<double>(zeta[state][zeta_index]) / num_steps / simulations;
+			}
+			cout << endl;
+		}
+	}
+	else if (report == __gkl_report_rho_steps){
+		for (int step = 0; step < num_steps; ++step){
+			cout << step;
+			for (int state = 0; state < num_states; ++state){
+				cout << '\t' << static_cast<double>(rho_steps[state][step]) / simulations;
 			}
 			cout << endl;
 		}
@@ -433,7 +457,12 @@ void generate_new_ca(){
 	// generating linear array with states' quantity;
 	for (int cell = 1; cell < ca_len + 1; ++cell){
 		for (int state = 0; state < num_states; ++state){
-			if (cell <= s_count[state]){ ca[step][cell] = state; ++rho[state]; break; }
+			if (cell <= s_count[state]){ 
+				ca[step][cell] = state; 
+				++rho[state]; 
+				++rho_steps[state][step];
+				break; 
+			}
 		}
 	}
 	for (int state = 0; state < num_states; ++state){ ++zeta[state][rho[state]]; }
@@ -472,14 +501,17 @@ int main(int argc, char *argv[]){
 			for (int cell = 1; cell < ca_len + 1; ++cell){
 				ca[step % 2][cell] = psi[ca[(step + 1) % 2][cell - 1]][ca[(step + 1) % 2][cell]][ca[(step + 1) % 2][cell + 1]];
 				++rho[ca[step % 2][cell]];
+				++rho_steps[ca[step % 2][cell]][step];
 			}
 			/* end applying psi */
 			/* begin applying noise error */
-			if (noise && (random(__gen) < noise)){
-				for (int cell = 1; cell < ca_len + 1; ++cell){
+			for (int cell = 1; cell < ca_len + 1; ++cell){
+				if (noise && (random(__gen) < noise)){
 					--rho[ca[step % 2][cell]];
+					--rho_steps[ca[step % 2][cell]][step];
 					ca[step % 2][cell] = static_cast<int>(random(__gen) * num_states);
 					++rho[ca[step % 2][cell]];
+					++rho_steps[ca[step % 2][cell]][step];
 				}
 			}
 			if (step > transient) { 
