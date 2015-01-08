@@ -228,3 +228,7 @@ $RECYCLE.BIN/
 *.msi
 *.msm
 *.msp
+
+## Python precompiled (pyc) files
+## =================
+*.pyc
